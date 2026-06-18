@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Notification Dashboard</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #f0f2f5;
+        margin: 0;
+        padding: 20px;
+    }
+    .container {
+        max-width: 900px;
+        margin: 20px auto;
+        background: white;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h2 { color: #333; }
+    .top-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    #logout-btn {
+        background: #f44336;
+        color: white;
+        border: none;
+        padding: 8px 15px;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+    .create-form {
+        display: flex;
+        gap: 10px;
+        margin: 20px 0;
+        flex-wrap: wrap;
+    }
+    .create-form input, .create-form select {
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        flex: 1;
+        min-width: 120px;
+    }
+    .create-form button {
+        background: #4CAF50;
+        color: white;
+        border: none;
+        padding: 8px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+    .filters {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+    .filters input, .filters select {
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+    }
+    th, td {
+        text-align: left;
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+    }
+    th { background: #f9f9f9; }
+    .status {
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        color: white;
+    }
+    .Pending { background: #ff9800; }
+    .Sent { background: #4CAF50; }
+    .Failed { background: #f44336; }
+    select.status-dropdown {
+        padding: 4px;
+        border-radius: 5px;
+    }
+    .delete-btn {
+        background: #f44336;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <div class="top-bar">
+        <h2>Notifications</h2>
+        <button id="logout-btn" onclick="logout()">Logout</button>
+    </div>
+
+    <div class="create-form">
+        <input type="text" id="title" placeholder="Title">
+        <input type="text" id="message" placeholder="Message">
+        <select id="channel">
+            <option value="SMS">SMS</option>
+            <option value="Email">Email</option>
+            <option value="Push">Push</option>
+        </select>
+        <button onclick="createNotification()">+ Create</button>
+    </div>
+
+    <div class="filters">
+        <input type="text" id="search-title" placeholder="Search by title" onkeyup="loadNotifications()">
+        <select id="filter-status" onchange="loadNotifications()">
+            <option value="">All Status</option>
+            <option value="Pending">Pending</option>
+            <option value="Sent">Sent</option>
+            <option value="Failed">Failed</option>
+        </select>
+    </div>
+
+    <table>
+        <thead>
+        <tr>
+            <th>Title</th>
+            <th>Message</th>
+            <th>Channel</th>
+            <th>Status</th>
+            <th>Action</th>
+        </tr>
+        </thead>
+        <tbody id="notification-list"></tbody>
+    </table>
+</div>
+
+<script>
+    const BASE_URL = "http://127.0.0.1:8000";
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+        window.location.href = "index.html";
+    }
+
+    function logout() {
+        localStorage.removeItem("token");
+        window.location.href = "index.html";
+    }
+
+    async function loadNotifications() {
+        const title = document.getElementById("search-title").value;
+        const status = document.getElementById("filter-status").value;
+
+        let url = BASE_URL + "/notifications/?";
+        if (title) url += "title=" + encodeURIComponent(title) + "&";
+        if (status) url += "status=" + encodeURIComponent(status);
+
+        const response = await fetch(url, {
+            headers: { "Authorization": "Bearer " + token }
+        });
+
+        if (response.status === 401) {
+            logout();
+            return;
+        }
+
+        const data = await response.json();
+        renderTable(data);
+    }
+
+    function renderTable(notifications) {
+        const tbody = document.getElementById("notification-list");
+        tbody.innerHTML = "";
+
+        notifications.forEach(n => {
+            const row = document.createElement("tr");
+            row.innerHTML = `
+                <td>${n.title}</td>
+                <td>${n.message}</td>
+                <td>${n.channel}</td>
+                <td>
+                    <select class="status-dropdown" onchange="updateStatus(${n.id}, this.value)">
+                        <option value="Pending" ${n.status === "Pending" ? "selected" : ""}>Pending</option>
+                        <option value="Sent" ${n.status === "Sent" ? "selected" : ""}>Sent</option>
+                        <option value="Failed" ${n.status === "Failed" ? "selected" : ""}>Failed</option>
+                    </select>
+                </td>
+                <td><button class="delete-btn" onclick="deleteNotification(${n.id})">Delete</button></td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    async function createNotification() {
+        const title = document.getElementById("title").value;
+        const message = document.getElementById("message").value;
+        const channel = document.getElementById("channel").value;
+
+        if (!title || !message) {
+            alert("Please fill title and message");
+            return;
+        }
+
+        await fetch(BASE_URL + "/notifications/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + token
+            },
+            body: JSON.stringify({ title, message, channel })
+        });
+
+        document.getElementById("title").value = "";
+        document.getElementById("message").value = "";
+        loadNotifications();
+    }
+
+    async function updateStatus(id, newStatus) {
+        await fetch(BASE_URL + "/notifications/" + id, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + token
+            },
+            body: JSON.stringify({ status: newStatus })
+        });
+        loadNotifications();
+    }
+
+    async function deleteNotification(id) {
+        await fetch(BASE_URL + "/notifications/" + id, {
+            method: "DELETE",
+            headers: { "Authorization": "Bearer " + token }
+        });
+        loadNotifications();
+    }
+
+    loadNotifications();
+</script>
+
+</body>
+</html>
